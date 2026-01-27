@@ -11,3 +11,7 @@ find_package(OpenSSL REQUIRED)
 add_executable(bittorrent ${SOURCE_FILES})
 
 target_link_libraries(bittorrent PRIVATE OpenSSL::Crypto)
+
+target_include_directories(bittorrent PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(bittorrent PRIVATE OpenSSL::Crypto)
