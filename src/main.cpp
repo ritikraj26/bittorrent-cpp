@@ -5,7 +5,11 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <fstream>
+#include <sstream>
+#include <iomanip>
 
+
+#include <openssl/sha.h>
 #include "lib/nlohmann/json.hpp"
 
 using json = nlohmann::json;
@@ -13,6 +17,63 @@ using json = nlohmann::json;
 /* Forward declaration */
 json decode(const std::string& s, size_t& i);
 
+std::string encode_bencoded_value(const json& value);
+
+
+std::string calculate_sha1(const std::string& input) {
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(reinterpret_cast<const unsigned char*>(input.c_str()), input.size(), hash);
+
+    std::ostringstream oss;
+    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
+    }
+    return oss.str();
+}
+
+//encoders
+std::string encode_string(const std::string& str) {
+    return std::to_string(str.size()) + ":" + str;
+}
+
+std::string encode_integer(int64_t value) {
+    return "i" + std::to_string(value) + "e";
+}
+
+std::string encode_list(const json& list) {
+    std::string result = "l";
+    for (const auto& item : list) {
+        result += encode_bencoded_value(item);
+    }
+    result += "e";
+    return result;
+}
+
+std::string encode_dict(const json& dict) {
+    std::string result = "d";
+    for (auto it = dict.begin(); it != dict.end(); ++it) {
+        result += encode_string(it.key());
+        result += encode_bencoded_value(it.value());
+    }
+    result += "e";
+    return result;
+}
+
+std::string encode_bencoded_value(const json& value) {
+    if (value.is_string()) {
+        return encode_string(value.get<std::string>());
+    } else if (value.is_number_integer()) {
+        return encode_integer(value.get<int64_t>());
+    } else if (value.is_array()) {
+        return encode_list(value);
+    } else if (value.is_object()) {
+        return encode_dict(value);
+    } else {
+        throw std::runtime_error("Unsupported JSON type for bencoding");
+    }
+}
+
+// decoders
 json decode_string(const std::string& s, size_t& i) {
     size_t colon = s.find(':', i);
     if (colon == std::string::npos)
@@ -130,6 +191,15 @@ int main(int argc, char* argv[]) {
                 std::cout<<"Length: "<<decoded["info"]["length"].get<long long>()<<"\n";
             } else {
                 std::cerr << "Error: 'info.length' key not found in the torrent file.\n";
+            }
+
+            if (decoded.contains("info")) {
+                std::string bencoded_dict = encode_dict(decoded["info"]);
+                std::string sha1_hash = calculate_sha1(bencoded_dict);
+                std::cout << "Info Hash: "<<sha1_hash<<"\n";
+
+            } else {
+                std::cerr << "Error: 'info' key not found in the torrent file.\n";
             }
         } catch (const std::exception& e) {
             std::cerr << "Error: Failed to decode the torrent file. " << e.what() << "\n";
