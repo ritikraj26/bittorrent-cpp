@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <stdexcept>
+#include <fstream>
 
 #include "lib/nlohmann/json.hpp"
 
@@ -89,11 +90,57 @@ int main(int argc, char* argv[]) {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
-    if (argc < 3 || std::string(argv[1]) != "decode") {
+    if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " decode <encoded_value>\n";
         return 1;
     }
 
-    json decoded = decode_bencoded_value(argv[2]);
-    std::cout << decoded.dump() << std::endl;
+    std::string command = argv[1];
+
+    if (command == "decode") {
+        try {
+            json decoded = decode_bencoded_value(argv[2]);
+            std::cout << decoded.dump() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Error: Failed to decode the value. " << e.what() << "\n";
+            return 1;
+        }
+    } else if (command == "info") {
+        std::ifstream file(argv[2], std::ios::binary);
+        if (!file) {
+            std::cerr << "Error: Unable to open file " << argv[2] << "\n";
+            return 1;
+        }
+
+        std::string file_content(
+            (std::istreambuf_iterator<char>(file)),
+             std::istreambuf_iterator<char>()
+        );
+
+        try {
+            json decoded = decode_bencoded_value(file_content);
+
+            if (decoded.contains("announce")) {
+                std::cout<<"Tracker URL: "<<decoded["announce"].get<std::string>()<<"\n";
+            } else {
+                std::cerr << "Error: 'announce' key not found in the torrent file.\n";
+            }
+
+            if (decoded.contains("info") && decoded["info"].contains("length")) {
+                std::cout<<"Length: "<<decoded["info"]["length"].get<long long>()<<"\n";
+            } else {
+                std::cerr << "Error: 'info.length' key not found in the torrent file.\n";
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error: Failed to decode the torrent file. " << e.what() << "\n";
+            return 1;
+        }
+    } else {
+        std::cerr << "Unknown command: " << command << "\n";
+        std::cerr << "Usage: " << argv[0] << " decode <encoded_value>\n";
+        std::cerr << "       " << argv[0] << " info <torrent_file>\n";
+        return 1;
+    }
+
+    return 0;
 }
