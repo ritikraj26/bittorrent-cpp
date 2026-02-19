@@ -7,7 +7,22 @@
 #include "bencode/encode.hpp"
 #include "crypto/sha1.hpp"
 
+#include <vector>
+
+
 using json = nlohmann::json;
+
+std::string to_hex(const std::string &s) {
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    for (unsigned char c : s) {
+        out.push_back(hex[c >> 4]);
+        out.push_back(hex[c & 0x0F]);
+    }
+    return out;
+}
+
+
 
 int main(int argc, char* argv[]) {
     std::cout << std::unitbuf;
@@ -62,6 +77,24 @@ int main(int argc, char* argv[]) {
             std::string info_hash = sha1_hex(bencoded_info);
 
             std::cout << "Info Hash: " << info_hash << "\n";
+
+            std::cout << "Piece Length: " << torrent.at("info").at("piece length").get<long long>() << "\n";
+
+            std::string piece_hashes_string = torrent.at("info").at("pieces").get<std::string>();
+            std::vector<std::string> piece_hashes;
+
+            if (piece_hashes_string.size() % 20 != 0) {
+                throw std::runtime_error("Invalid pieces field length");
+            }
+
+            for(size_t i = 0; i < piece_hashes_string.size(); i += 20) {
+                piece_hashes.push_back(piece_hashes_string.substr(i,20));
+            }
+
+            std::cout << "Piece Hashes: " << "\n";
+            for(size_t i = 0; i < piece_hashes.size(); i++) {
+                std::cout << to_hex(piece_hashes[i]) << "\n";
+            }
 
         } catch (const std::exception& e) {
             std::cerr << "Torrent parse error: " << e.what() << "\n";
