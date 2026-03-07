@@ -1,109 +1,109 @@
 #include <iostream>
-#include <fstream>
 #include <string>
 
 #include "lib/nlohmann/json.hpp"
+
 #include "bencode/decode.hpp"
-#include "bencode/encode.hpp"
-#include "crypto/sha1.hpp"
 
-#include <vector>
+#include "utils/file_reader.hpp"
+#include "utils/hex.hpp"
 
+#include "torrent/torrent_parser.hpp"
+#include "torrent/piece_hash.hpp"
+
+#include "tracker/tracker_client.hpp"
+#include "tracker/peer_parser.hpp"
+
+#include "peer/peer_connection.hpp"
 
 using json = nlohmann::json;
 
-std::string to_hex(const std::string &s) {
-    static const char* hex = "0123456789abcdef";
-    std::string out;
-    for (unsigned char c : s) {
-        out.push_back(hex[c >> 4]);
-        out.push_back(hex[c & 0x0F]);
-    }
-    return out;
-}
-
-
-
 int main(int argc, char* argv[]) {
+
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
     if (argc < 3) {
         std::cerr << "Usage:\n";
-        std::cerr << argv[0] << " decode <bencoded_value>\n";
-        std::cerr << argv[0] << " info <torrent_file>\n";
+        std::cerr << argv[0] << " decode <value>\n";
+        std::cerr << argv[0] << " info <torrent>\n";
+        std::cerr << argv[0] << " peers <torrent>\n";
         return 1;
     }
 
     std::string command = argv[1];
 
-    if (command == "decode") {
-        try {
+    try {
+
+        if (command == "decode") {
+
             json decoded = decode_bencoded_value(argv[2]);
             std::cout << decoded.dump() << "\n";
-        } catch (const std::exception& e) {
-            std::cerr << "Decode error: " << e.what() << "\n";
-            return 1;
-        }
-    }
-
-    else if (command == "info") {
-        std::ifstream file(argv[2], std::ios::binary);
-        if (!file) {
-            std::cerr << "Failed to open file: " << argv[2] << "\n";
-            return 1;
         }
 
-        std::string file_content(
-            (std::istreambuf_iterator<char>(file)),
-            std::istreambuf_iterator<char>()
-        );
+        else {
 
-        try {
-            json torrent = decode_bencoded_value(file_content);
+            std::string content = read_file(argv[2]);
+            json torrent = parse_torrent(content);
 
-            // Tracker URL
-            std::cout << "Tracker URL: "
-                      << torrent.at("announce").get<std::string>()
-                      << "\n";
+            if (command == "info") {
 
-            // File length
-            std::cout << "Length: "
-                      << torrent.at("info").at("length").get<long long>()
-                      << "\n";
+                std::cout << "Tracker URL: "
+                          << get_tracker_url(torrent) << "\n";
 
-            // Info hash
-            std::string bencoded_info = encode_dict(torrent.at("info"));
-            std::string info_hash = sha1_hex(bencoded_info);
+                std::cout << "Length: "
+                          << get_file_length(torrent) << "\n";
 
-            std::cout << "Info Hash: " << info_hash << "\n";
+                std::cout << "Info Hash: "
+                          << compute_info_hash_hex(torrent) << "\n";
 
-            std::cout << "Piece Length: " << torrent.at("info").at("piece length").get<long long>() << "\n";
+                std::cout << "Piece Length: "
+                          << get_piece_length(torrent) << "\n";
 
-            std::string piece_hashes_string = torrent.at("info").at("pieces").get<std::string>();
-            std::vector<std::string> piece_hashes;
+                auto hashes = extract_piece_hashes(
+                    get_pieces_blob(torrent)
+                );
 
-            if (piece_hashes_string.size() % 20 != 0) {
-                throw std::runtime_error("Invalid pieces field length");
+                std::cout << "Piece Hashes:\n";
+
+                for (auto& h : hashes)
+                    std::cout << to_hex(h) << "\n";
             }
 
-            for(size_t i = 0; i < piece_hashes_string.size(); i += 20) {
-                piece_hashes.push_back(piece_hashes_string.substr(i,20));
+            else if (command == "peers") {
+
+                std::string peers_blob = request_peers(torrent);
+
+                print_peers(peers_blob);
             }
 
-            std::cout << "Piece Hashes: " << "\n";
-            for(size_t i = 0; i < piece_hashes.size(); i++) {
-                std::cout << to_hex(piece_hashes[i]) << "\n";
+            else if (command == "handshake") {
+
+                std::string torrent_content = read_file(argv[2]);
+
+                json torrent = parse_torrent(torrent_content);
+
+                std::string info_hash = compute_info_hash_raw(torrent);
+
+                std::string peer = argv[3];
+
+                auto pos = peer.find(':');
+
+                std::string ip = peer.substr(0, pos);
+                int port = std::stoi(peer.substr(pos + 1));
+
+                setup_tcp_connection(ip, port, info_hash);
             }
 
-        } catch (const std::exception& e) {
-            std::cerr << "Torrent parse error: " << e.what() << "\n";
-            return 1;
+            else {
+                std::cerr << "Unknown command\n";
+                return 1;
+            }
         }
-    }
 
-    else {
-        std::cerr << "Unknown command: " << command << "\n";
+    } catch (const std::exception& e) {
+
+        std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
 
