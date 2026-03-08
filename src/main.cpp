@@ -76,6 +76,36 @@ int main(int argc, char* argv[]) {
                 torrent
             );
         }
+        else if (command == "download") {
+
+            if (argc < 5)
+                throw std::runtime_error(
+                    "Usage: download -o <output_file> <torrent_file>"
+                );
+
+            if (std::string(argv[2]) != "-o")
+                throw std::runtime_error("Expected -o flag");
+
+            std::string output_file = argv[3];
+            std::string torrent_file = argv[4];
+
+            std::string torrent_content = read_file(torrent_file);
+            json torrent = parse_torrent(torrent_content);
+
+            std::string info_hash = compute_info_hash_raw(torrent);
+
+            std::string peers_blob = request_peers(torrent);
+            auto peers = parse_peers(peers_blob);
+
+            if (peers.empty())
+                throw std::runtime_error("No peers found");
+
+            auto pos = peers[0].find(':');
+            std::string ip = peers[0].substr(0, pos);
+            int port = std::stoi(peers[0].substr(pos + 1));
+
+            download_file(ip, port, info_hash, output_file, torrent);
+        }
 
         else {
 

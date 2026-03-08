@@ -34,3 +34,17 @@ void request_block(
 );
 
 std::vector<uint8_t> receive_piece_block(int sock);
+
+void download_file(
+    const std::string& peer_ip,
+    int port,
+    const std::string& info_hash,
+    const std::string& output_file,
+    const json& torrent
+);
+
+std::vector<uint8_t> download_piece_from_peer(
+    int sock,
+    uint32_t piece_index,
+    const json& torrent
+);

@@ -14,6 +14,9 @@
 #include "utils/hex.hpp"
 
 #include "torrent/torrent_parser.hpp"
+#include "torrent/piece_hash.hpp"
+
+#include <openssl/sha.h>
 
 #include "lib/nlohmann/json.hpp"
 
@@ -311,4 +314,116 @@ void setup_tcp_connection(const std::string& peer_ip,
     out.close();
 
     close(sock);
+}
+
+void download_file(
+    const std::string& peer_ip,
+    int port,
+    const std::string& info_hash,
+    const std::string& output_file,
+    const json& torrent
+) {
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    inet_pton(AF_INET, peer_ip.c_str(), &server_addr.sin_addr);
+
+    connect(sock, (sockaddr*)&server_addr, sizeof(server_addr));
+
+    std::string peer_id = generate_peer_id(20);
+
+    perform_handshake(sock, info_hash, peer_id);
+
+    receive_bitfield(sock);
+
+    send_interested(sock);
+
+    wait_for_unchoke(sock);
+
+    uint32_t piece_length = get_piece_length(torrent);
+    uint32_t file_length = get_file_length(torrent);
+
+    auto hashes = extract_piece_hashes(get_pieces_blob(torrent));
+
+    uint32_t total_pieces = hashes.size();
+
+    std::vector<uint8_t> file_data;
+
+    for (uint32_t i = 0; i < total_pieces; i++) {
+
+        auto piece = download_piece_from_peer(
+            sock,
+            i,
+            torrent
+        );
+
+        unsigned char hash[20];
+        SHA1(piece.data(), piece.size(), hash);
+
+        if (memcmp(hash, hashes[i].data(), 20) != 0) {
+            throw std::runtime_error("Piece hash mismatch");
+        }
+
+        file_data.insert(
+            file_data.end(),
+            piece.begin(),
+            piece.end()
+        );
+    }
+
+    std::ofstream out(output_file, std::ios::binary);
+
+    out.write(
+        reinterpret_cast<char*>(file_data.data()),
+        file_data.size()
+    );
+
+    out.close();
+
+    close(sock);
+}
+
+std::vector<uint8_t> download_piece_from_peer(
+    int sock,
+    uint32_t piece_index,
+    const json& torrent
+) {
+    uint32_t piece_length = get_piece_length(torrent);
+    uint32_t file_length = get_file_length(torrent);
+
+    uint32_t total_pieces =
+        (file_length + piece_length - 1) / piece_length;
+
+    if (piece_index == total_pieces - 1)
+        piece_length = file_length - piece_index * piece_length;
+
+    const uint32_t block_size = 16 * 1024;
+
+    uint32_t offset = 0;
+
+    std::vector<uint8_t> piece_data;
+
+    while (offset < piece_length) {
+
+        uint32_t current_block =
+            std::min(block_size, piece_length - offset);
+
+        request_block(sock, piece_index, offset, current_block);
+
+        auto block = receive_piece_block(sock);
+
+        piece_data.insert(
+            piece_data.end(),
+            block.begin(),
+            block.end());
+
+        offset += current_block;
+    }
+
+    // close(sock);
+
+    return piece_data;
 }
