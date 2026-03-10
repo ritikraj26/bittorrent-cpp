@@ -7,6 +7,8 @@
 
 #include "utils/file_reader.hpp"
 #include "utils/hex.hpp"
+#include "utils/parse_magnet.hpp"
+#include "utils/url_decode.hpp"
 
 #include "torrent/torrent_parser.hpp"
 #include "torrent/piece_hash.hpp"
@@ -40,6 +42,19 @@ int main(int argc, char* argv[]) {
 
             json decoded = decode_bencoded_value(argv[2]);
             std::cout << decoded.dump() << "\n";
+        }
+        else if (command == "magnet_parse") {
+            std::string magnet_link = argv[2];
+
+            json parsed = parse_magnet(magnet_link);
+
+            std::cout << "Info Hash: " <<
+                    parsed.at("info_hash").get<std::string>()
+                    << "\n";
+
+            std::cout << "Tracker URL: " <<
+                    url_decode(parsed.at("tracker_url").get<std::string>())
+                    << "\n";
         }
         else if (command == "download_piece") {
 
