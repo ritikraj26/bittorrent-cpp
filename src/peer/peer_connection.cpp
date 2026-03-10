@@ -85,6 +85,7 @@ void send_interested(int sock) {
     //setting message id for interested
     message[4] = 2;
 
+    // the last param is like a flag for different sending options
     ssize_t sent = send(sock, message, 5, 0);
 
     if (sent != 5) {
@@ -98,7 +99,7 @@ void wait_for_unchoke(int sock) {
 
         read_exact(sock, &length, 4);
 
-        // ntohl converts from network byte order to host byte order
+        // ntohl converts from network byte order to host byte order long
         length = ntohl(length);
 
         // keep alive message, length = 0
@@ -222,13 +223,12 @@ std::vector<uint8_t> receive_piece_block(int sock) {
     return block;
 }
 
-void setup_tcp_connection(const std::string& peer_ip,
+void download_piece(const std::string& peer_ip,
                           int port,
                           const std::string& info_hash,
                           u_int32_t piece_index,
                           const std::string& output_file,
-                          const json& torrent)
-{
+                          const json& torrent) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock < 0) {

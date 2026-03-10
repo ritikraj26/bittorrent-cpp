@@ -9,7 +9,7 @@
 using json = nlohmann::json;
 
 
-void setup_tcp_connection(
+void download_piece(
     const std::string& peer_ip,
     int port,
     const std::string& info_hash,

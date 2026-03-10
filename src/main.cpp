@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
             std::string ip = peers[0].substr(0, pos);
             int port = std::stoi(peers[0].substr(pos + 1));
 
-            setup_tcp_connection(
+            download_piece(
                 ip,
                 port,
                 info_hash,
