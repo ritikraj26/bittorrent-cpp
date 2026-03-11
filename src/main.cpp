@@ -96,7 +96,9 @@ int main(int argc, char* argv[]) {
 
             std::string info_hash = compute_info_hash_raw(torrent);
 
-            std::string peers_blob = request_peers(torrent);
+            std::string peer_id = generate_peer_id(20);
+
+            std::string peers_blob = request_peers(torrent, peer_id);
 
             auto peers = parse_peers(peers_blob);
 
@@ -111,7 +113,8 @@ int main(int argc, char* argv[]) {
                 info_hash,
                 piece_index,
                 output_file,
-                torrent
+                torrent,
+                peer_id
             );
         }
         else if (command == "download") {
@@ -132,7 +135,9 @@ int main(int argc, char* argv[]) {
 
             std::string info_hash = compute_info_hash_raw(torrent);
 
-            std::string peers_blob = request_peers(torrent);
+            std::string peer_id = generate_peer_id(20);
+
+            std::string peers_blob = request_peers(torrent, peer_id);
             auto peers = parse_peers(peers_blob);
 
             if (peers.empty())
@@ -142,7 +147,7 @@ int main(int argc, char* argv[]) {
             std::string ip = peers[0].substr(0, pos);
             int port = std::stoi(peers[0].substr(pos + 1));
 
-            download_file(ip, port, info_hash, output_file, torrent);
+            download_file(ip, port, info_hash, output_file, torrent, peer_id);
         }
 
         else {
@@ -176,7 +181,9 @@ int main(int argc, char* argv[]) {
 
             else if (command == "peers") {
 
-                std::string peers_blob = request_peers(torrent);
+                std::string peer_id = generate_peer_id(20);
+
+                std::string peers_blob = request_peers(torrent, peer_id);
 
                 print_peers(peers_blob);
             }

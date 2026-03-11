@@ -260,7 +260,8 @@ void download_piece(const std::string& peer_ip,
                           const std::string& info_hash,
                           u_int32_t piece_index,
                           const std::string& output_file,
-                          const json& torrent) {
+                          const json& torrent,
+                          const std::string& peer_id) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock < 0) {
@@ -286,7 +287,7 @@ void download_piece(const std::string& peer_ip,
         throw std::runtime_error("Connection failed");
     }
 
-    std::string peer_id = generate_peer_id(20);
+    // std::string peer_id = generate_peer_id(20);
 
     std::string received_peer_id =
         perform_handshake(sock, info_hash, peer_id);
@@ -353,7 +354,8 @@ void download_file(
     int port,
     const std::string& info_hash,
     const std::string& output_file,
-    const json& torrent
+    const json& torrent,
+    const std::string& peer_id
 ) {
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -365,7 +367,7 @@ void download_file(
 
     connect(sock, (sockaddr*)&server_addr, sizeof(server_addr));
 
-    std::string peer_id = generate_peer_id(20);
+    // std::string peer_id = generate_peer_id(20);
 
     perform_handshake(sock, info_hash, peer_id);
 

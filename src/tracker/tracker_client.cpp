@@ -21,14 +21,14 @@ size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
     return total;
 }
 
-std::string request_peers(const json& torrent) {
+std::string request_peers(const json& torrent, const std::string& peer_id) {
 
     std::string info_hash = compute_info_hash_raw(torrent);
 
     std::string url = get_tracker_url(torrent);
 
     url += "?info_hash=" + url_encode(info_hash);
-    url += "&peer_id=" + url_encode(generate_peer_id(20));
+    url += "&peer_id=" + url_encode(peer_id);
     url += "&port=6881";
     url += "&uploaded=0";
     url += "&downloaded=0";

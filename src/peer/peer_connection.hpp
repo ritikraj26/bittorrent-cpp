@@ -16,7 +16,8 @@ void download_piece(
     const std::string& info_hash,
     uint32_t piece_index,
     const std::string& output_file,
-    const json& torrent
+    const json& torrent,
+    const std::string& peer_id
 );
 
 std::vector<uint8_t> receive_bitfield(int sock);
@@ -41,7 +42,8 @@ void download_file(
     int port,
     const std::string& info_hash,
     const std::string& output_file,
-    const json& torrent
+    const json& torrent,
+    const std::string& peer_id
 );
 
 std::vector<uint8_t> download_piece_from_peer(
