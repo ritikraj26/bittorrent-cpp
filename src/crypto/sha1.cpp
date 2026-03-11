@@ -1,7 +1,7 @@
 #include "sha1.hpp"
 
 #include <openssl/sha.h>
-#include "utils/hex.hpp"
+#include "utils/hex_utils.hpp"
 
 std::string sha1_raw(const std::string& data) {
 
@@ -21,5 +21,5 @@ std::string sha1_raw(const std::string& data) {
 
 std::string sha1_hex(const std::string& data) {
 
-    return to_hex(sha1_raw(data));
+    return bytes_to_hex(sha1_raw(data));
 }

@@ -18551,9 +18551,9 @@ class serializer
     static std::string hex_bytes(std::uint8_t byte)
     {
         std::string result = "FF";
-        constexpr const char* nibble_to_hex = "0123456789ABCDEF";
-        result[0] = nibble_to_hex[byte / 16];
-        result[1] = nibble_to_hex[byte % 16];
+        constexpr const char* nibble_bytes_to_hex = "0123456789ABCDEF";
+        result[0] = nibble_bytes_to_hex[byte / 16];
+        result[1] = nibble_bytes_to_hex[byte % 16];
         return result;
     }
 

@@ -6,9 +6,10 @@
 #include "bencode/decode.hpp"
 
 #include "utils/file_reader.hpp"
-#include "utils/hex.hpp"
+#include "utils/hex_utils.hpp"
 #include "utils/parse_magnet.hpp"
-#include "utils/url_decode.hpp"
+#include "utils/url_utils.hpp"
+#include "utils/random.hpp"
 
 #include "torrent/torrent_parser.hpp"
 #include "torrent/piece_hash.hpp"
@@ -55,6 +56,28 @@ int main(int argc, char* argv[]) {
             std::cout << "Tracker URL: " <<
                     url_decode(parsed.at("tracker_url").get<std::string>())
                     << "\n";
+        }
+        else if (command == "magnet_handshake") {
+            std::string magnet_link = argv[2];
+
+            json parsed = parse_magnet(magnet_link);
+
+            std::string tracker_url = url_decode(parsed.at("tracker_url").get<std::string>());
+            std::string info_hash = hex_to_bytes(parsed.at("info_hash").get<std::string>());
+            std::string peer_id = generate_peer_id(20);
+
+            std::string peers_blob = request_peers(tracker_url, info_hash, peer_id);
+
+            auto peers = parse_peers(peers_blob);
+
+            auto pos = peers[0].find(':');
+
+            std::string ip = peers[0].substr(0, pos);
+            int port = std::stoi(peers[0].substr(pos + 1));
+
+            std::string received_peer_id = setup_tcp_connection(ip, port, peer_id, info_hash);
+
+            std::cout << "Peer ID: " << bytes_to_hex(received_peer_id) << "\n";
         }
         else if (command == "download_piece") {
 
@@ -148,7 +171,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "Piece Hashes:\n";
 
                 for (auto& h : hashes)
-                    std::cout << to_hex(h) << "\n";
+                    std::cout << bytes_to_hex(h) << "\n";
             }
 
             else if (command == "peers") {
@@ -176,7 +199,7 @@ int main(int argc, char* argv[]) {
                     perform_peer_handshake(ip, port, info_hash);
 
                 std::cout << "Peer ID: "
-                        << to_hex(peer_id)
+                        << bytes_to_hex(peer_id)
                         << "\n";
             }
             else {

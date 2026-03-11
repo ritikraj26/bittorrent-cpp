@@ -8,6 +8,7 @@
 
 using json = nlohmann::json;
 
+std::string setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
 
 void download_piece(
     const std::string& peer_ip,

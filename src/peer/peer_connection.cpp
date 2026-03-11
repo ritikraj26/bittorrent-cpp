@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #include "utils/random.hpp"
-#include "utils/hex.hpp"
+#include "utils/hex_utils.hpp"
 
 #include "torrent/torrent_parser.hpp"
 #include "torrent/piece_hash.hpp"
@@ -21,6 +21,38 @@
 #include "lib/nlohmann/json.hpp"
 
 using json = nlohmann::json;
+
+std::string setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (sock < 0) {
+        throw std::runtime_error("Socket creation failed");
+    }
+
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, peer_ip.c_str(),
+                  &server_addr.sin_addr) <= 0) {
+
+        close(sock);
+        throw std::runtime_error("Invalid IP address");
+    }
+
+    if (connect(sock,
+        (sockaddr*)&server_addr,
+        sizeof(server_addr)) < 0) {
+
+        close(sock);
+        throw std::runtime_error("Connection failed");
+    }
+
+    std::string received_peer_id =
+        perform_extension_handshake(sock, info_hash, peer_id);
+
+    return received_peer_id;
+}
 
 
 void read_exact(int sock, void* buffer, size_t size) {
@@ -260,7 +292,7 @@ void download_piece(const std::string& peer_ip,
         perform_handshake(sock, info_hash, peer_id);
 
     std::cout << "Peer ID: "
-              << to_hex(received_peer_id)
+              << bytes_to_hex(received_peer_id)
               << std::endl;
 
     auto bitfield = receive_bitfield(sock);
