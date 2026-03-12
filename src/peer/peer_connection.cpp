@@ -48,8 +48,24 @@ std::string setup_tcp_connection(const std::string& peer_ip, int port, const std
         throw std::runtime_error("Connection failed");
     }
 
+    // Perform base handshake with extension protocol bit set
     std::string received_peer_id =
-        perform_extension_handshake(sock, info_hash, peer_id);
+        perform_base_handshake_with_extensions(sock, info_hash, peer_id);
+
+    // Receive bitfield message (must happen before extension handshake)
+    receive_bitfield(sock);
+
+    // Send extension handshake message (message ID 20, extension ID 0)
+    // We use extension ID 16 for ut_metadata (arbitrary choice)
+    send_extension_handshake_message(sock, 16);
+
+    // Receive peer's extension handshake response
+    uint8_t peer_ut_metadata_id = receive_extension_handshake_message(sock);
+
+    std::cout << "Peer's ut_metadata extension ID: " 
+              << static_cast<int>(peer_ut_metadata_id) << std::endl;
+
+    close(sock);
 
     return received_peer_id;
 }
@@ -290,7 +306,7 @@ void download_piece(const std::string& peer_ip,
     // std::string peer_id = generate_peer_id(20);
 
     std::string received_peer_id =
-        perform_handshake(sock, info_hash, peer_id);
+        perform_base_handshake(sock, info_hash, peer_id);
 
     std::cout << "Peer ID: "
               << bytes_to_hex(received_peer_id)
@@ -369,7 +385,7 @@ void download_file(
 
     // std::string peer_id = generate_peer_id(20);
 
-    perform_handshake(sock, info_hash, peer_id);
+    perform_base_handshake(sock, info_hash, peer_id);
 
     receive_bitfield(sock);
 
