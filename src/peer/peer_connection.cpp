@@ -23,7 +23,7 @@
 
 using json = nlohmann::json;
 
-std::pair<std::string, uint8_t> setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
+int establish_tcp_connection(const std::string& peer_ip, int port) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock < 0) {
@@ -49,6 +49,12 @@ std::pair<std::string, uint8_t> setup_tcp_connection(const std::string& peer_ip,
         throw std::runtime_error("Connection failed");
     }
 
+    return sock;
+}
+
+std::pair<std::string, uint8_t> perform_extension_handshake(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
+    int sock = establish_tcp_connection(peer_ip, port);
+
     // Perform base handshake with extension protocol bit set
     std::string received_peer_id =
         perform_base_handshake_with_extensions(sock, info_hash, peer_id);
@@ -66,6 +72,27 @@ std::pair<std::string, uint8_t> setup_tcp_connection(const std::string& peer_ip,
     close(sock);
 
     return {received_peer_id, peer_ut_metadata_id};
+}
+
+int setup_metadata_connection(const std::string& peer_ip, int port, 
+                              const std::string& peer_id, 
+                              const std::string& info_hash,
+                              uint8_t& peer_extension_id) {
+    int sock = establish_tcp_connection(peer_ip, port);
+
+    // Perform base handshake with extension protocol bit set
+    perform_base_handshake_with_extensions(sock, info_hash, peer_id);
+
+    // Receive bitfield message
+    receive_bitfield(sock);
+
+    // Send extension handshake message
+    send_extension_handshake_message(sock, 16);
+
+    // Receive peer's extension handshake response
+    peer_extension_id = receive_extension_handshake_message(sock);
+
+    return sock;  // Return the socket for further communication
 }
 
 
@@ -276,32 +303,7 @@ void download_piece(const std::string& peer_ip,
                           const std::string& output_file,
                           const json& torrent,
                           const std::string& peer_id) {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sock < 0) {
-        throw std::runtime_error("Socket creation failed");
-    }
-
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-
-    if (inet_pton(AF_INET, peer_ip.c_str(),
-                  &server_addr.sin_addr) <= 0) {
-
-        close(sock);
-        throw std::runtime_error("Invalid IP address");
-    }
-
-    if (connect(sock,
-        (sockaddr*)&server_addr,
-        sizeof(server_addr)) < 0) {
-
-        close(sock);
-        throw std::runtime_error("Connection failed");
-    }
-
-    // std::string peer_id = generate_peer_id(20);
+    int sock = establish_tcp_connection(peer_ip, port);
 
     std::string received_peer_id =
         perform_base_handshake(sock, info_hash, peer_id);
@@ -371,17 +373,7 @@ void download_file(
     const json& torrent,
     const std::string& peer_id
 ) {
-
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    inet_pton(AF_INET, peer_ip.c_str(), &server_addr.sin_addr);
-
-    connect(sock, (sockaddr*)&server_addr, sizeof(server_addr));
-
-    // std::string peer_id = generate_peer_id(20);
+    int sock = establish_tcp_connection(peer_ip, port);
 
     perform_base_handshake(sock, info_hash, peer_id);
 

@@ -79,31 +79,7 @@ std::string perform_peer_handshake(
     int port,
     const std::string& info_hash
 ) {
-
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sock < 0) {
-        throw std::runtime_error("Socket creation failed");
-    }
-
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-
-    if (inet_pton(AF_INET, peer_ip.c_str(),
-                  &server_addr.sin_addr) <= 0) {
-
-        close(sock);
-        throw std::runtime_error("Invalid IP address");
-    }
-
-    if (connect(sock,
-        (sockaddr*)&server_addr,
-        sizeof(server_addr)) < 0) {
-
-        close(sock);
-        throw std::runtime_error("Connection failed");
-    }
+    int sock = establish_tcp_connection(peer_ip, port);
 
     std::string peer_id = generate_peer_id(20);
 
@@ -206,3 +182,99 @@ uint8_t receive_extension_handshake_message(int sock) {
     throw std::runtime_error("Peer does not support ut_metadata extension");
 }
 
+void send_metadata_request(int sock, uint8_t peer_extension_id, uint32_t piece_index) {
+    // Build the metadata request payload
+    json request_msg;
+    request_msg["msg_type"] = 0; // 0 for request
+    request_msg["piece"] = piece_index;
+
+    // Encode the payload as bencode
+    std::string bencoded_payload = encode_bencoded_value(request_msg);
+
+    // Calculate message length: message_id (1) + extension_id (1) + payload
+    uint32_t payload_length = 1 + 1 + bencoded_payload.size();
+    uint32_t length_network = htonl(payload_length);
+
+    // Build the complete message
+    std::vector<uint8_t> message;
+    
+    // Add 4-byte length prefix
+    message.insert(message.end(), 
+                   reinterpret_cast<uint8_t*>(&length_network),
+                   reinterpret_cast<uint8_t*>(&length_network) + 4);
+    
+    // Add message ID (20 for extension protocol)
+    message.push_back(20);
+    
+    // Add extension message ID (peer_extension_id)
+    message.push_back(peer_extension_id);
+    
+    // Add bencoded payload
+    message.insert(message.end(), 
+                   bencoded_payload.begin(), 
+                   bencoded_payload.end());
+
+    // Send the message
+    ssize_t sent = send(sock, message.data(), message.size(), 0);
+    
+    if (sent != static_cast<ssize_t>(message.size())) {
+        throw std::runtime_error("Failed to send metadata request");
+    }
+
+    std::cout << "Sent metadata request for piece index: " 
+              << piece_index << std::endl;
+}
+
+std::string receive_metadata_response(int sock) {
+    // Read message length (4 bytes)
+    uint32_t length;
+    read_exact(sock, &length, 4);
+    length = ntohl(length);
+
+    if (length == 0) {
+        throw std::runtime_error("Received keep-alive instead of metadata response");
+    }
+
+    // Read message ID (1 byte)
+    uint8_t message_id;
+    read_exact(sock, &message_id, 1);
+
+    if (message_id != 20) {
+        throw std::runtime_error("Expected extension message (ID 20), got: " + 
+                                std::to_string(message_id));
+    }
+
+    // Read extension message ID (1 byte)
+    uint8_t extension_id;
+    read_exact(sock, &extension_id, 1);
+
+    // Read the remaining payload
+    size_t remaining_size = length - 2;  // Subtract message_id and extension_id
+    std::vector<char> payload(remaining_size);
+    read_exact(sock, payload.data(), remaining_size);
+
+    // The payload consists of a bencoded dictionary followed by the metadata
+    std::string payload_str(payload.begin(), payload.end());
+    
+    // Decode the bencoded dictionary and get where it ends
+    auto [metadata_info, dict_end] = decode_bencoded_value_with_position(payload_str);
+
+    std::cout << "Received metadata response: " 
+              << metadata_info.dump() << std::endl;
+
+    // Check msg_type
+    if (metadata_info.contains("msg_type")) {
+        int msg_type = metadata_info["msg_type"].get<int>();
+        if (msg_type == 2) {
+            throw std::runtime_error("Peer rejected metadata request");
+        }
+        if (msg_type != 1) {
+            throw std::runtime_error("Unexpected msg_type: " + std::to_string(msg_type));
+        }
+    }
+
+    // Extract the metadata (everything after the dictionary)
+    std::string metadata = payload_str.substr(dict_end);
+    
+    return metadata;
+}

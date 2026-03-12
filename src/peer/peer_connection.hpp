@@ -9,8 +9,17 @@
 
 using json = nlohmann::json;
 
-// Returns pair of <peer_id, ut_metadata_extension_id>
-std::pair<std::string, uint8_t> setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
+// Low-level TCP socket connection
+int establish_tcp_connection(const std::string& peer_ip, int port);
+
+// Performs complete extension protocol handshake, returns pair of <peer_id, ut_metadata_extension_id>
+std::pair<std::string, uint8_t> perform_extension_handshake(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
+
+// Returns socket and sets peer_extension_id to the peer's ut_metadata extension ID
+int setup_metadata_connection(const std::string& peer_ip, int port, 
+                              const std::string& peer_id, 
+                              const std::string& info_hash,
+                              uint8_t& peer_extension_id);
 
 void download_piece(
     const std::string& peer_ip,

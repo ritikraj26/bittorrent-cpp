@@ -70,3 +70,9 @@ json decode_bencoded_value(const std::string& encoded) {
     size_t i = 0;
     return decode(encoded, i);
 }
+
+std::pair<json, size_t> decode_bencoded_value_with_position(const std::string& encoded) {
+    size_t i = 0;
+    json result = decode(encoded, i);
+    return {result, i};
+}

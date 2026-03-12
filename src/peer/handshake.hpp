@@ -20,3 +20,7 @@ std::string perform_peer_handshake(
 void send_extension_handshake_message(int sock, uint8_t ut_metadata_id);
 
 uint8_t receive_extension_handshake_message(int sock);
+
+void send_metadata_request(int sock, uint8_t peer_extension_id, uint32_t piece_index);
+
+std::string receive_metadata_response(int sock);
