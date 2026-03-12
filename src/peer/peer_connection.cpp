@@ -74,6 +74,21 @@ std::pair<std::string, uint8_t> perform_extension_handshake(const std::string& p
     return {received_peer_id, peer_ut_metadata_id};
 }
 
+std::string download_metadata_from_peer(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
+    uint8_t peer_extension_id;
+    int sock = setup_metadata_connection(peer_ip, port, peer_id, info_hash, peer_extension_id);
+
+    // Request metadata piece 0
+    send_metadata_request(sock, peer_extension_id, 0);
+
+    // Receive metadata response
+    std::string metadata = receive_metadata_response(sock);
+
+    close(sock);
+
+    return metadata;
+}
+
 int setup_metadata_connection(const std::string& peer_ip, int port, 
                               const std::string& peer_id, 
                               const std::string& info_hash,

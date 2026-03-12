@@ -15,6 +15,9 @@ int establish_tcp_connection(const std::string& peer_ip, int port);
 // Performs complete extension protocol handshake, returns pair of <peer_id, ut_metadata_extension_id>
 std::pair<std::string, uint8_t> perform_extension_handshake(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
 
+// Downloads metadata from peer (complete flow: connect, handshake, request, receive)
+std::string download_metadata_from_peer(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
+
 // Returns socket and sets peer_extension_id to the peer's ut_metadata extension ID
 int setup_metadata_connection(const std::string& peer_ip, int port, 
                               const std::string& peer_id, 

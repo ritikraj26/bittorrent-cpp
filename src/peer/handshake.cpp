@@ -170,8 +170,13 @@ uint8_t receive_extension_handshake_message(int sock) {
     std::string payload_str(payload.begin(), payload.end());
     json extension_data = decode_bencoded_value(payload_str);
 
-    std::cout << "Received extension handshake: " 
-              << extension_data.dump() << std::endl;
+    // Try to log the extension handshake (may contain binary data)
+    try {
+        std::cout << "Received extension handshake: " 
+                  << extension_data.dump() << std::endl;
+    } catch (const std::exception&) {
+        std::cout << "Received extension handshake (contains binary data)" << std::endl;
+    }
 
     // Extract the ut_metadata extension ID from peer's response
     if (extension_data.contains("m") && 
@@ -259,8 +264,13 @@ std::string receive_metadata_response(int sock) {
     // Decode the bencoded dictionary and get where it ends
     auto [metadata_info, dict_end] = decode_bencoded_value_with_position(payload_str);
 
-    std::cout << "Received metadata response: " 
-              << metadata_info.dump() << std::endl;
+    // Try to log the metadata response (may contain binary data)
+    try {
+        std::cout << "Received metadata response: " 
+                  << metadata_info.dump() << std::endl;
+    } catch (const std::exception&) {
+        std::cout << "Received metadata response (contains binary data)" << std::endl;
+    }
 
     // Check msg_type
     if (metadata_info.contains("msg_type")) {
