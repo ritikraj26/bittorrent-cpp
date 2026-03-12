@@ -3,12 +3,14 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <utility>
 
 #include "lib/nlohmann/json.hpp"
 
 using json = nlohmann::json;
 
-std::string setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
+// Returns pair of <peer_id, ut_metadata_extension_id>
+std::pair<std::string, uint8_t> setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash);
 
 void download_piece(
     const std::string& peer_ip,

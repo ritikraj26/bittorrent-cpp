@@ -75,9 +75,10 @@ int main(int argc, char* argv[]) {
             std::string ip = peers[0].substr(0, pos);
             int port = std::stoi(peers[0].substr(pos + 1));
 
-            std::string received_peer_id = setup_tcp_connection(ip, port, peer_id, info_hash);
+            auto [received_peer_id, peer_extension_id] = setup_tcp_connection(ip, port, peer_id, info_hash);
 
             std::cout << "Peer ID: " << bytes_to_hex(received_peer_id) << "\n";
+            std::cout << "Peer Metadata Extension ID: " << static_cast<int>(peer_extension_id) << "\n";
         }
         else if (command == "download_piece") {
 

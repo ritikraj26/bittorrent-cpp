@@ -6,6 +6,7 @@
 #include <vector>
 #include <stdexcept>
 #include <fstream>
+#include <utility>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -22,7 +23,7 @@
 
 using json = nlohmann::json;
 
-std::string setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
+std::pair<std::string, uint8_t> setup_tcp_connection(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock < 0) {
@@ -62,12 +63,9 @@ std::string setup_tcp_connection(const std::string& peer_ip, int port, const std
     // Receive peer's extension handshake response
     uint8_t peer_ut_metadata_id = receive_extension_handshake_message(sock);
 
-    std::cout << "Peer's ut_metadata extension ID: " 
-              << static_cast<int>(peer_ut_metadata_id) << std::endl;
-
     close(sock);
 
-    return received_peer_id;
+    return {received_peer_id, peer_ut_metadata_id};
 }
 
 
