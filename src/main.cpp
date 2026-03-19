@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
             std::string ip = peers[0].substr(0, pos);
             int port = std::stoi(peers[0].substr(pos + 1));
 
-            auto [received_peer_id, peer_extension_id] = perform_extension_handshake(ip, port, peer_id, info_hash);
+            auto [received_peer_id, peer_extension_id] = exchange_extension_info(ip, port, peer_id, info_hash);
 
             std::cout << "Peer ID: " << bytes_to_hex(received_peer_id) << "\n";
             std::cout << "Peer Metadata Extension ID: " << static_cast<int>(peer_extension_id) << "\n";
@@ -167,6 +167,54 @@ int main(int argc, char* argv[]) {
 
             std::cout << "Piece " << piece_index << " downloaded to " << output_file << ".\n";
         }
+        else if (command == "magnet_download") {
+
+            if (argc < 5)
+                throw std::runtime_error("Usage: magnet_download -o <output> <magnet_link>");
+
+            if (std::string(argv[2]) != "-o")
+                throw std::runtime_error("Expected -o flag");
+
+            std::string output_file = argv[3];
+            std::string magnet_link = argv[4];
+
+            // Parse magnet link to get tracker URL and info hash
+            json parsed = parse_magnet(magnet_link);
+            std::string tracker_url = url_decode(parsed.at("tracker_url").get<std::string>());
+            std::string info_hash = hex_to_bytes(parsed.at("info_hash").get<std::string>());
+
+            std::string peer_id = generate_peer_id(20);
+
+            // Get peers from tracker
+            std::string peers_blob = request_peers(tracker_url, info_hash, peer_id);
+            auto peers = parse_peers(peers_blob);
+
+            auto pos = peers[0].find(':');
+            std::string ip = peers[0].substr(0, pos);
+            int port = std::stoi(peers[0].substr(pos + 1));
+
+            // Download metadata from peer
+            std::string metadata = download_metadata_from_peer(ip, port, peer_id, info_hash);
+
+            // Parse metadata to get info dictionary
+            json info_dict = decode_bencoded_value(metadata);
+
+            // Construct a minimal torrent JSON (download_file needs the info dict)
+            json torrent;
+            torrent["info"] = info_dict;
+
+            // Download the entire file
+            download_file(
+                ip,
+                port,
+                info_hash,
+                output_file,
+                torrent,
+                peer_id
+            );
+
+            std::cout << "Downloaded " << output_file << ".\n";
+        }
         else if (command == "download_piece") {
 
             if (argc < 6)
@@ -236,6 +284,41 @@ int main(int argc, char* argv[]) {
             int port = std::stoi(peers[0].substr(pos + 1));
 
             download_file(ip, port, info_hash, output_file, torrent, peer_id);
+        }
+
+        else if (command == "download_mt") {
+
+            if (argc < 5)
+                throw std::runtime_error(
+                    "Usage: download_mt -o <output_file> <torrent_file>"
+                );
+
+            if (std::string(argv[2]) != "-o")
+                throw std::runtime_error("Expected -o flag");
+
+            std::string output_file = argv[3];
+            std::string torrent_file = argv[4];
+
+            std::string torrent_content = read_file(torrent_file);
+            json torrent = parse_torrent(torrent_content);
+
+            std::string info_hash = compute_info_hash_raw(torrent);
+
+            std::string peer_id = generate_peer_id(20);
+
+            std::string peers_blob = request_peers(torrent, peer_id);
+            auto peers = parse_peers(peers_blob);
+
+            if (peers.empty())
+                throw std::runtime_error("No peers found");
+
+            std::cout << "Found " << peers.size() << " peer(s)" << std::endl;
+
+            // Use up to 5 peers for concurrent downloads
+            size_t max_peers = std::min(peers.size(), size_t(5));
+            std::vector<std::string> selected_peers(peers.begin(), peers.begin() + max_peers);
+
+            download_file_multithreaded(selected_peers, info_hash, output_file, torrent, peer_id);
         }
 
         else {

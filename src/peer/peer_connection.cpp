@@ -1,5 +1,6 @@
 #include "peer/peer_connection.hpp"
 #include "peer/handshake.hpp"
+#include "peer/piece_manager.hpp"
 
 #include <iostream>
 #include <cstring>
@@ -10,6 +11,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <future>
+#include <thread>
+#include <chrono>
 
 #include "utils/random.hpp"
 #include "utils/hex_utils.hpp"
@@ -52,7 +56,7 @@ int establish_tcp_connection(const std::string& peer_ip, int port) {
     return sock;
 }
 
-std::pair<std::string, uint8_t> perform_extension_handshake(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
+std::pair<std::string, uint8_t> exchange_extension_info(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
     int sock = establish_tcp_connection(peer_ip, port);
 
     // Perform base handshake with extension protocol bit set
@@ -75,8 +79,19 @@ std::pair<std::string, uint8_t> perform_extension_handshake(const std::string& p
 }
 
 std::string download_metadata_from_peer(const std::string& peer_ip, int port, const std::string& peer_id, const std::string& info_hash) {
-    uint8_t peer_extension_id;
-    int sock = setup_metadata_connection(peer_ip, port, peer_id, info_hash, peer_extension_id);
+    int sock = establish_tcp_connection(peer_ip, port);
+
+    // Perform base handshake with extension protocol bit set
+    perform_base_handshake_with_extensions(sock, info_hash, peer_id);
+
+    // Receive bitfield message
+    receive_bitfield(sock);
+
+    // Send extension handshake message (we use extension ID 16 for ut_metadata)
+    send_extension_handshake_message(sock, 16);
+
+    // Receive peer's extension handshake response to get their ut_metadata ID
+    uint8_t peer_extension_id = receive_extension_handshake_message(sock);
 
     // Request metadata piece 0
     send_metadata_request(sock, peer_extension_id, 0);
@@ -87,27 +102,6 @@ std::string download_metadata_from_peer(const std::string& peer_ip, int port, co
     close(sock);
 
     return metadata;
-}
-
-int setup_metadata_connection(const std::string& peer_ip, int port, 
-                              const std::string& peer_id, 
-                              const std::string& info_hash,
-                              uint8_t& peer_extension_id) {
-    int sock = establish_tcp_connection(peer_ip, port);
-
-    // Perform base handshake with extension protocol bit set
-    perform_base_handshake_with_extensions(sock, info_hash, peer_id);
-
-    // Receive bitfield message
-    receive_bitfield(sock);
-
-    // Send extension handshake message
-    send_extension_handshake_message(sock, 16);
-
-    // Receive peer's extension handshake response
-    peer_extension_id = receive_extension_handshake_message(sock);
-
-    return sock;  // Return the socket for further communication
 }
 
 
@@ -481,4 +475,125 @@ std::vector<uint8_t> download_piece_from_peer(
     // close(sock);
 
     return piece_data;
+}
+
+void download_file_multithreaded(
+    const std::vector<std::string>& peers,
+    const std::string& info_hash,
+    const std::string& output_file,
+    const json& torrent,
+    const std::string& peer_id
+) {
+    uint32_t piece_length = get_piece_length(torrent);
+    uint32_t file_length = get_file_length(torrent);
+    auto hashes = extract_piece_hashes(get_pieces_blob(torrent));
+    uint32_t total_pieces = hashes.size();
+
+    std::cout << "\n=== Multi-threaded Download Starting ===" << std::endl;
+    std::cout << "Total pieces: " << total_pieces << std::endl;
+    std::cout << "Using " << peers.size() << " peer(s)" << std::endl;
+
+    // Create thread-safe piece manager
+    PieceManager piece_manager(total_pieces);
+
+    // Worker function that each thread will execute
+    auto worker = [&](const std::string& peer_str, int worker_id) {
+        try {
+            // Parse peer address
+            auto pos = peer_str.find(':');
+            std::string ip = peer_str.substr(0, pos);
+            int port = std::stoi(peer_str.substr(pos + 1));
+
+            std::cout << "[Worker " << worker_id << "] Connecting to " << peer_str << std::endl;
+
+            // Establish connection
+            int sock = establish_tcp_connection(ip, port);
+
+            // Perform handshake
+            perform_base_handshake(sock, info_hash, peer_id);
+
+            // Receive bitfield
+            receive_bitfield(sock);
+
+            // Send interested
+            send_interested(sock);
+
+            // Wait for unchoke
+            wait_for_unchoke(sock);
+
+            std::cout << "[Worker " << worker_id << "] Ready to download" << std::endl;
+
+            // Download pieces until all are complete
+            while (!piece_manager.is_complete()) {
+                // Get next piece to download
+                auto maybe_piece_index = piece_manager.get_next_piece();
+                
+                if (!maybe_piece_index.has_value()) {
+                    // No more pieces available (all in progress or complete)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+
+                uint32_t piece_index = maybe_piece_index.value();
+
+                try {
+                    std::cout << "[Worker " << worker_id << "] Downloading piece " << piece_index << std::endl;
+
+                    // Download the piece
+                    auto piece_data = download_piece_from_peer(sock, piece_index, torrent);
+
+                    // Verify hash
+                    unsigned char hash[20];
+                    SHA1(piece_data.data(), piece_data.size(), hash);
+
+                    if (memcmp(hash, hashes[piece_index].data(), 20) != 0) {
+                        std::cerr << "[Worker " << worker_id << "] Piece " << piece_index 
+                                  << " hash mismatch!" << std::endl;
+                        piece_manager.mark_failed(piece_index);
+                        continue;
+                    }
+
+                    // Mark as complete
+                    piece_manager.mark_complete(piece_index, piece_data);
+
+                } catch (const std::exception& e) {
+                    std::cerr << "[Worker " << worker_id << "] Failed to download piece " 
+                              << piece_index << ": " << e.what() << std::endl;
+                    piece_manager.mark_failed(piece_index);
+                }
+            }
+
+            close(sock);
+            std::cout << "[Worker " << worker_id << "] Finished" << std::endl;
+
+        } catch (const std::exception& e) {
+            std::cerr << "[Worker " << worker_id << "] Connection failed: " << e.what() << std::endl;
+        }
+    };
+
+    // Launch worker threads for each peer
+    std::vector<std::future<void>> futures;
+    int worker_id = 0;
+
+    for (const auto& peer : peers) {
+        futures.push_back(std::async(std::launch::async, worker, peer, worker_id++));
+    }
+
+    // Wait for all workers to complete
+    for (auto& future : futures) {
+        future.get();
+    }
+
+    std::cout << "\n=== All workers finished ===" << std::endl;
+
+    // Assemble the file
+    std::cout << "Assembling file..." << std::endl;
+    auto file_data = piece_manager.assemble_file();
+
+    // Write to file
+    std::ofstream out(output_file, std::ios::binary);
+    out.write(reinterpret_cast<char*>(file_data.data()), file_data.size());
+    out.close();
+
+    std::cout << "Download complete! Saved to " << output_file << std::endl;
 }
